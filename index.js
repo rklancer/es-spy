@@ -97,25 +97,25 @@ var handlers = {
         // If the syntactic production that is being evaluated is contained in strict mode code, let strict be true, else let strict be false.
         // Return a value of type Reference whose base value is baseValue and whose referenced name is propertyNameString, and whose strict mode flag is strict.
 
-        var ret = {
-            type: 'SequenceExpression',
-            expressions: []
-        };
-        var expressions = ret.expressions;
-
+        var ret;
         var baseValue = getValue(e.object);
-        expressions.push(baseValue);
 
         var propertyNameReference;
         var propertyNameValue;
 
         if (e.computed) {
             propertyNameValue = coerceToString(getValue(e.property));
-            expressions.push(propertyNameValue);
         } else {
             // e.property is an Identifier; we don't need to spy it
-            propertyNameValue = e.property.name;
+            propertyNameValue = e.property;
         }
+
+        ret = {
+            type: 'MemberExpression',
+            computed: e.computed,
+            object: baseValue,
+            property: propertyNameValue
+        };
 
         setInfo(ret, {
             reference: {
@@ -154,18 +154,17 @@ function handleSubexpression(expression) {
 }
 
 function handleExpression(expression) {
-    estraverse.traverse(expression, {
+    return estraverse.replace(expression, {
         enter: function(node, parent) {
             console.log("entering expression node ", node.type);
         },
 
         leave: function(node, parent) {
             console.log("leaving  expression node ", node.type);
-            return handleSubexpression(node);
+            var ret = handleSubexpression(node);
+            return ret;
         }
     });
-    // expression is modified in-place by the above
-    return expression;
 }
 
 // ====
@@ -173,7 +172,7 @@ function handleExpression(expression) {
 var example = "a[b];";
 var ast = esprima.parse(example);
 var skip;
-estraverse.traverse(ast, {
+ast = estraverse.replace(ast, {
     enter: function (node, parent) {
         console.log("entering ", node.type);
 
