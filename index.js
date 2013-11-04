@@ -42,7 +42,7 @@ function getValue(expression) {
     } else if (reference.baseValue) {
         ret.right = {
             type: "MemberExpression",
-            computed: true,
+            computed: reference.computed,
             object: {
                 type: 'Identifier',
                 name: reference.baseValue
@@ -64,16 +64,32 @@ function getValue(expression) {
 }
 
 function coerceToString(expression) {
-    return {
-        type: 'BinaryExpression',
-        operator: '+',
-        left: expression,
+    var valueVar;
+    var ret = {
+        type: 'AssignmentExpression',
+        operator: '=',
+        left: {
+            type: 'Identifier',
+            name: valueVar = '_' + (++count)
+        },
         right: {
-            type: 'Literal',
-            value: '',
-            raw: '""'
+            type: 'BinaryExpression',
+            operator: '+',
+            left: expression,
+            right: {
+                type: 'Literal',
+                value: '',
+                raw: '""'
+            }
         }
     };
+
+    setInfo(ret, {
+        reference: {
+            value: valueVar
+        }
+    });
+    return ret;
 }
 
 var handlers = {
@@ -97,30 +113,44 @@ var handlers = {
         // If the syntactic production that is being evaluated is contained in strict mode code, let strict be true, else let strict be false.
         // Return a value of type Reference whose base value is baseValue and whose referenced name is propertyNameString, and whose strict mode flag is strict.
 
-        var ret;
+        var subexpressions = [];
+        var ret = {
+            type: 'SequenceExpression',
+            expressions: subexpressions
+        };
         var baseValue = getValue(e.object);
+        var baseIdentifier = getInfo(baseValue).reference.value;
 
-        var propertyNameReference;
+        subexpressions.push(baseValue);
+
         var propertyNameValue;
-
+        var propertyNameIdentifier;
         if (e.computed) {
             propertyNameValue = coerceToString(getValue(e.property));
+            subexpressions.push(propertyNameValue);
+            propertyNameIdentifier = getInfo(propertyNameValue).value;
         } else {
-            // e.property is an Identifier; we don't need to spy it
-            propertyNameValue = e.property;
+            propertyNameIdentifier = e.property.name;
         }
 
-        ret = {
+        subexpressions.push({
             type: 'MemberExpression',
             computed: e.computed,
-            object: baseValue,
-            property: propertyNameValue
-        };
+            object: {
+                type: 'Identifier',
+                name: baseIdentifier
+            },
+            property: {
+                type: 'Identifier',
+                name: propertyNameIdentifier
+            }
+        });
 
         setInfo(ret, {
             reference: {
-                baseValue: baseValue,
-                propertyNameValue: propertyNameValue
+                computed: e.computed,
+                baseValue: baseIdentifier,
+                propertyNameValue: propertyNameIdentifier
             }
         });
 
@@ -169,7 +199,7 @@ function handleExpression(expression) {
 
 // ====
 
-var example = "a[b];";
+var example = "a.c[b]";
 var ast = esprima.parse(example);
 var skip;
 ast = estraverse.replace(ast, {
