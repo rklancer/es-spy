@@ -153,7 +153,128 @@ var handlers = {
     },
 
     CallExpression: function(e) {
-        return e;
+        //  The production CallExpression : MemberExpression Arguments is evaluated as follows:
+        //
+        // Let ref be the result of evaluating MemberExpression.
+        // Let func be GetValue(ref).
+        // Let argList be the result of evaluating Arguments, producing an internal list of argument values (see 11.2.4).
+        // If Type(func) is not Object, throw a TypeError exception.
+        // If IsCallable(func) is false, throw a TypeError exception.
+        // If Type(ref) is Reference, then
+        // If IsPropertyReference(ref) is true, then
+        // Let thisValue be GetBase(ref).
+        // Else, the base of ref is an Environment Record
+        // Let thisValue be the result of calling the ImplicitThisValue concrete method of GetBase(ref).
+        // Else, Type(ref) is not Reference.
+        // Let thisValue be undefined.
+        // Return the result of calling the [[Call]] internal method on func, providing thisValue as the this value and providing the list argList as the argument values.
+        // The production CallExpression : CallExpression Arguments is evaluated in exactly the same manner, except that the contained CallExpression is evaluated in step 1.
+
+        var subexpressions = [];
+        var ret = {
+            type: 'SequenceExpression',
+            expressions: subexpressions
+        };
+
+        var ref = e.callee;
+        subexpressions.push(ref);
+
+        var func = getValue(ref);
+        var funcIdentifier = getInfo(func).reference.value;
+        subexpressions.push(func);
+
+        var argValues = [];
+        e.arguments.forEach(function(arg) {
+            var argVal;
+            subexpressions.push(arg);
+            argVal = getValue(arg);
+            subexpressions.push(argVal);
+            argValues.push({
+                type: 'Identifier',
+                name: getInfo(argVal).reference.value
+            });
+        });
+
+        var refReference = getInfo(ref).reference;
+        var assignment;
+        var valueVar;
+
+        subexpressions.push(assignment = {
+            type: 'AssignmentExpression',
+            operator: '=',
+            left: {
+                type: 'Identifier',
+                name: valueVar = '_' + (++count)
+            }
+        });
+
+        if ( refReference.baseValue ) {
+            // a.f() => (_1 = a, _2 = a.f), _3 = _2.call(_1)
+            assignment.right = {
+                type: 'CallExpression',
+                callee: {
+                    type: 'MemberExpression',
+                    computed: false,
+                    object: {
+                        type: 'Identifier',
+                        name: funcIdentifier
+                    },
+                    property: {
+                        type: 'Identifier',
+                        name: 'call'
+                    }
+                },
+                arguments: [{
+                    type: 'Identifier',
+                    name: refReference.baseValue
+                }].concat(argValues)
+            };
+        } else if ( refReference.identifier ) {
+            // f() => _1 = f, _2 = _1()
+            assignment.right = {
+                type: 'CallExpression',
+                callee: {
+                    type: 'Identifier',
+                    name: funcIdentifier
+                },
+                arguments: argValues
+            };
+        } else if (refReference.value) {
+            // f()() => (_1 = f, _2 = _1()), _3 = _2.call()
+            // Need to set 'this' to undefined.
+            // This matters if the called function is strict mode
+            // See this handy explanation in addition to spec: http://stackoverflow.com/a/4295955
+
+            // a.f() => (_1 = a, _2 = a.f), _3 = _2.call(_1)
+            assignment.right = {
+                type: 'CallExpression',
+                callee: {
+                    type: 'MemberExpression',
+                    computed: false,
+                    object: {
+                        type: 'Identifier',
+                        name: funcIdentifier
+                    },
+                    property: {
+                        type: 'Identifier',
+                        name: 'call'
+                    }
+                },
+                arguments: [{
+                    type: 'Identifier',
+                    name: 'undefined'
+                }].concat(argValues)
+            };
+        }
+
+        // CallExpresion always returns a Value (except for host objects, which we will NOT support)
+        setInfo(ret, {
+            reference: {
+                value: valueVar
+            }
+        });
+
+        return ret;
     },
 };
 
@@ -194,7 +315,7 @@ function handleExpression(expression) {
 
 // ====
 
-var example = "a[b.c]";
+var example = "a(b);";
 var ast = esprima.parse(example);
 var skip;
 ast = estraverse.replace(ast, {
