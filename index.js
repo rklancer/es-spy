@@ -135,7 +135,7 @@ var handlers = {
         if (e.computed) {
             propertyNameValue = coerceToString(getValue(e.property));
             subexpressions.push(propertyNameValue);
-            propertyNameIdentifier = getInfo(propertyNameValue).value;
+            propertyNameIdentifier = getInfo(propertyNameValue).reference.value;
         } else {
             propertyNameIdentifier = getInfo(e.property).reference.identifier;
         }
@@ -193,7 +193,7 @@ function handleExpression(expression) {
 
 // ====
 
-var example = "a.b;";
+var example = "a.b[c];";
 var ast = esprima.parse(example);
 var skip;
 ast = estraverse.replace(ast, {
