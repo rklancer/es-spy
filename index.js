@@ -94,12 +94,18 @@ function coerceToString(expression) {
 
 var handlers = {
     Identifier: function(e) {
-        setInfo(e, {
+                // generate an empty node!
+        var ret = {
+            type:'SequenceExpression',
+            expressions: []
+        };
+
+        setInfo(ret, {
             reference: {
                 identifier: e.name
             }
         });
-        return e;
+        return ret;
     },
 
     MemberExpression: function(e) {
@@ -112,12 +118,13 @@ var handlers = {
         // Let propertyNameString be ToString(propertyNameValue).
         // If the syntactic production that is being evaluated is contained in strict mode code, let strict be true, else let strict be false.
         // Return a value of type Reference whose base value is baseValue and whose referenced name is propertyNameString, and whose strict mode flag is strict.
-
         var subexpressions = [];
         var ret = {
             type: 'SequenceExpression',
             expressions: subexpressions
         };
+        subexpressions.push(e.object);
+
         var baseValue = getValue(e.object);
         var baseIdentifier = getInfo(baseValue).reference.value;
 
@@ -130,21 +137,8 @@ var handlers = {
             subexpressions.push(propertyNameValue);
             propertyNameIdentifier = getInfo(propertyNameValue).value;
         } else {
-            propertyNameIdentifier = e.property.name;
+            propertyNameIdentifier = getInfo(e.property).reference.identifier;
         }
-
-        subexpressions.push({
-            type: 'MemberExpression',
-            computed: e.computed,
-            object: {
-                type: 'Identifier',
-                name: baseIdentifier
-            },
-            property: {
-                type: 'Identifier',
-                name: propertyNameIdentifier
-            }
-        });
 
         setInfo(ret, {
             reference: {
@@ -199,7 +193,7 @@ function handleExpression(expression) {
 
 // ====
 
-var example = "a.c[b]";
+var example = "a.b;";
 var ast = esprima.parse(example);
 var skip;
 ast = estraverse.replace(ast, {
@@ -217,9 +211,20 @@ ast = estraverse.replace(ast, {
     },
     leave: function (node, parent) {
         var ret;
+        var expression;
 
         if (skip) {
-            ret = handleExpression(node);
+            // Expressions may return references. Assume that here (for example, in an ExpressionStatement)
+            // that we want the value;
+
+            expression = handleExpression(node);
+            ret = {
+                type: 'SequenceExpression',
+                expressions: [
+                    expression,
+                    getValue(expression)
+                ]
+            };
             console.log("---------------------\n");
             skip = false;
         }
