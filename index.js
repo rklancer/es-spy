@@ -94,7 +94,7 @@ function coerceToString(expression) {
 
 var handlers = {
     Identifier: function(e) {
-                // generate an empty node!
+        // We need to generate an empty node!
         var ret = {
             type:'SequenceExpression',
             expressions: []
@@ -133,6 +133,7 @@ var handlers = {
         var propertyNameValue;
         var propertyNameIdentifier;
         if (e.computed) {
+            subexpressions.push(e.property);
             propertyNameValue = coerceToString(getValue(e.property));
             subexpressions.push(propertyNameValue);
             propertyNameIdentifier = getInfo(propertyNameValue).reference.value;
@@ -193,7 +194,7 @@ function handleExpression(expression) {
 
 // ====
 
-var example = "a.b[c];";
+var example = "a[b.c]";
 var ast = esprima.parse(example);
 var skip;
 ast = estraverse.replace(ast, {
