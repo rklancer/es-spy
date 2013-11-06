@@ -25,11 +25,20 @@ function coerceToString(transformResult) {
 function transformStatement(node) {
 }
 
+// or: make a .canTransform property of transformStatement
+var statementTransformsByNodeType = {
+};
+
+// TODO: require underscore, use _.forEach to convert statementTransformsByNodeType to a whitelist
+// of statementsToTransform (stick to ES3 in case running in an ES3 enviroment)
+var statementNodeTypesToTransform = statementTransformsByNodeType;
+
+
 // Returns a TransformResult
 function transformExpression(node) {
 }
 
-var transformByType = {
+var expressionTransformsByNodeType = {
     Identifier: function(node) {
     },
 
@@ -43,17 +52,28 @@ var transformByType = {
     }
 };
 
-var STATEMENT = 'statement';
-var EXPRESSION = 'expression';
+// TODO: _.forEach
+var expressionNodeTypesToTransform = expressionNodeTypesToTransform;
 
-var nodeTypeWhitelist = {
-    ExpressionStatement: STATEMENT,
-    MemberExpression: EXPRESSION,
-    // etc.
+// Just a list of nodes we can safely traverse. Exceptions are mainly statement types that treat
+// child expressions as left hand sides, but we do this in whitelist form so we don't traverse
+// statement types we don't understand.
+var nodeTypesToTraverse = {
 };
 
-// Properties:
+// This is the return type of transformExpression. It contains AST nodes corresponding to a
+// transformed version of the expression which stashes intermediate evaluation results in temporary
+// variables, and metadata with information about the temporary variables and what kind of data
+// will be stored in them after the expression nodes are evaluated at runtime.
+//  There are three cases. After the expression nodes are evaluated by the runtime:
+//    1. The variable named by 'baseValue' contains an object and 'referenceName' is a string value
+//       corresponding to a property of that object (which may be undefined). This corresponds
+//       roughly to a Reference specification type in ECMA-262 having isPropertyReference = true
+//    2. The variable named by 'referenceName' is a variable name in local scope. It can be
+//       dereferenced or assigned to.
+//    3. The value in 'value' is a plain Javascript value.Javascript
 //
+// Properties:
 // type: 'Reference' or 'Value'
 // baseValue: name of temp identifier corresponding to BaseValue of reference (object part), or null
 // referencedName: name of identifier
@@ -88,6 +108,7 @@ var skip;
 
 ast = estraverse.replace(ast, {
     enter: function (node, parent) {
+        var result;
 
         // Is this a statement we have to handle specially? (ForInStatements, VariableDeclarators
         // require special handling because they have "naked" left-hand-side expressions. We must
@@ -95,28 +116,35 @@ ast = estraverse.replace(ast, {
         // that gets a value. Note also that ForInStatements must have a statement inserted just
         // prior to it and in its block in order to spy correctly.
 
-        // If so:
-        this.skip();
-        // transformStatement just returns a subtree
-        return transformStatement(node);
+        // TODO: handle object expressions which don't have node.type
+        if (statementNodeTypesToTransform.hasOwnProperty(node.type)) {
+            this.skip();
+            // transformStatement just returns a subtree
+            return transformStatement(node);
+        }
 
         // Is this node's type NOT on our white list of node types? (nodes we want to traverse)
         // (remember to handle the case of object initializers, which have nodes w/o a type
         // property)
 
-        // If so:
-        this.skip();
-        return;         // leave node as-is.
+        if ( ! nodeTypesToTraverse.hasOwnProperty(node.type) &&
+             ! expressionNodeTypesToTransform.hasOwnProperty(node.type) ) {
+            this.skip();
+            return;
+        }
 
-        // Is this node (remember, it's on our whitelist) an expression?
+        if (expressionNodeTypesToTransform.hasOwnProperty(node.type)) {
+            // Is this node (remember, it's on our whitelist) an expression?
 
-        // If so:
-        this.skip();
-        result = transformExpression(node);
-        if (result) {
-            // Our whitelist checking is supposed to guarantee that all expressions are getValue'd
-            // at this point.
-            return getValue(result).toNode();
+            // If so:
+            this.skip();
+            result = transformExpression(node);
+
+            if (result) {
+                // Our whitelist checking is supposed to guarantee that all expressions are getValue'd
+                // at this point.
+                return getValue(result).toNode();
+            }
         }
 
         // Return without skipping or replacing. Either transformExpression couldn't do it's magic,
