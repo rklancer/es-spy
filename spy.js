@@ -3,6 +3,8 @@
 var esprima = require('esprima');
 var estraverse = require('estraverse');
 var escodegen = require('escodegen');
+var _ = require('underscore');
+
 
 // For now, hold intermediate values in variables named  _1, _2, _3, ...
 var getTempVar = function() {
@@ -13,53 +15,46 @@ var getTempVar = function() {
     };
 };
 
-// Returns a TransformResult
-function getValue(transformResult) {
-}
 
-// returns a TransformResult
-function coerceToString(transformResult) {
-}
+var statementTransformsByNodeType = {
+};
 
 // returns a node
 function transformStatement(node) {
 }
 
-// or: make a .canTransform property of transformStatement
-var statementTransformsByNodeType = {
+transformStatement.canTransform = function(node) {
+    return statementTransformsByNodeType.hasOwnProperty(node.type);
 };
 
-// TODO: require underscore, use _.forEach to convert statementTransformsByNodeType to a whitelist
-// of statementsToTransform (stick to ES3 in case running in an ES3 enviroment)
-var statementNodeTypesToTransform = statementTransformsByNodeType;
 
-
-// Returns a TransformResult
-function transformExpression(node) {
+function extendPrototypeOf(parent) {
+    function F() {}
+    F.prototype = parent.prototype;
+    return new F();
 }
 
-var expressionTransformsByNodeType = {
-    Identifier: function(node) {
-    },
+// Marker type
+function ExpressionResult() {
+}
 
-    MemberExpression: function(node) {
-    },
+function Value(value) {
+    this.value = value;
+}
+Value.prototype = extendPrototypeOf(ExpressionResult);
 
-    CallExpression: function(node) {
-    },
 
-    AssignmentExpression: function(node) {
-    }
-};
+function EnvironmentReference(referencedName) {
+    this.referencedName = referencedName;
+}
+EnvironmentReference.prototype = extendPrototypeOf(ExpressionResult);
 
-// TODO: _.forEach
-var expressionNodeTypesToTransform = expressionNodeTypesToTransform;
+function PropertyReference(baseValue, referencedName) {
+    this.baseValue = baseValue;
+    this.referencedName = referencedName;
+}
+PropertyReference.prototype = extendPrototypeOf(ExpressionResult);
 
-// Just a list of nodes we can safely traverse. Exceptions are mainly statement types that treat
-// child expressions as left hand sides, but we do this in whitelist form so we don't traverse
-// statement types we don't understand.
-var nodeTypesToTraverse = {
-};
 
 // This is the return type of transformExpression. It contains AST nodes corresponding to a
 // transformed version of the expression which stashes intermediate evaluation results in temporary
@@ -82,29 +77,67 @@ var nodeTypesToTraverse = {
 // Reference valid.
 //
 // I don't think we need runtime considerations like IsStrictReference or HasPrimitiveBase
-function TransformResult() {
+function TransformedExpression(expressionResult, nodes) {
+    if ( ! expressionResult instanceof ExpressionResult ) {
+        throw new TypeError("expression must return an ExpressionResult");
+    }
 
+    nodes = nodes || [];
+    var _nodes = this.nodes = [];
+    _.each(nodes, function(node) {
+        _nodes.push(node);
+    });
 }
 
-// Returns a single AST node corresponding the TransformResult. If the TransformResult's
-// expressions array has more than one expression, they will be wrapped in a SequenceExpression
-// first. This is used at the top level to turn a TransformResult into something that goes into the
-// "expression slot" in the AST, but it can also be used by indidual expression transforms, such as
-// the ternary expression transform, which need to consolidate an expression list into a single
-// node.,
-TransformResult.prototype.toNode = function() {
+// Returns a TransformedExpression consisting of getValue applied to the
+TransformedExpression.prototype.getValue = function(expression) {
 
 };
 
-TransformResult.prototype.isPropertyReference = function() {
+// Returns a single AST node corresponding the TransformedExpression. If the TransformedExpression's
+// expressions array has more than one expression, they will be wrapped in a SequenceExpression
+// first. This is used at the top level to turn a TransformedExpression into something that goes
+// into the "expression slot" in the AST, but it can also be used by indidual expression transforms,
+// such as the ternary expression transform, which need to consolidate an expression list into a
+// single node.
+TransformedExpression.prototype.toNode = function() {
 
+};
+
+// TODO: should this be a method of TransformedExpression?
+// returns a TransformedExpression
+function coerceToString(expression) {
+}
+
+var expressionTransformsByNodeType = {
+    Identifier: function(node) {
+        return new TransformedExpression(new EnvironmentReference(node.name));
+    },
+
+    MemberExpression: function(node) {
+
+    }
+};
+
+// Returns a TransformedExpression
+function transformExpression(node) {
+    return expressionTransformsByNodeType[node.type](node);
+}
+
+transformExpression.canTransform = function(node) {
+    return expressionTransformsByNodeType.hasOwnProperty(node.type);
+};
+
+
+var nodeTypesToTraverse = {
+    Program: true,
+    ExpressionStatement: true
 };
 
 // ====
 
 var example = "++a.b;";
 var ast = esprima.parse(example);
-var skip;
 
 ast = estraverse.replace(ast, {
     enter: function (node, parent) {
@@ -117,34 +150,25 @@ ast = estraverse.replace(ast, {
         // prior to it and in its block in order to spy correctly.
 
         // TODO: handle object expressions which don't have node.type
-        if (statementNodeTypesToTransform.hasOwnProperty(node.type)) {
+        if (transformStatement.canTransform(node)) {
             this.skip();
             // transformStatement just returns a subtree
             return transformStatement(node);
         }
 
-        // Is this node's type NOT on our white list of node types? (nodes we want to traverse)
-        // (remember to handle the case of object initializers, which have nodes w/o a type
-        // property)
-
-        if ( ! nodeTypesToTraverse.hasOwnProperty(node.type) &&
-             ! expressionNodeTypesToTransform.hasOwnProperty(node.type) ) {
+        if (transformExpression.canTransform(node)) {
             this.skip();
-            return;
-        }
-
-        if (expressionNodeTypesToTransform.hasOwnProperty(node.type)) {
-            // Is this node (remember, it's on our whitelist) an expression?
-
-            // If so:
-            this.skip();
+            // Our parent must be on the nodesToTraverse whitelist, so we may safely assume that
+            // it getValue's the expression.
             result = transformExpression(node);
 
             if (result) {
-                // Our whitelist checking is supposed to guarantee that all expressions are getValue'd
-                // at this point.
-                return getValue(result).toNode();
+                return result.getValue().toNode();
             }
+        } else if ( ! nodeTypesToTraverse.hasOwnProperty(node.type)) {
+            // Again, to guard against getValue-ing expressions that are meant to be strictly on a
+            // left-hand-side, skip any expression or statement nodes that we don't understand.
+            this.skip();
         }
 
         // Return without skipping or replacing. Either transformExpression couldn't do it's magic,
