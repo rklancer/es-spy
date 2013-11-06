@@ -10,7 +10,8 @@
     "esprima": "~1.0.4",
     "escodegen": "0.0.27",
     "estraverse": "~1.3.2",
-    "escope": "~1.0.0"
+    "escope": "~1.0.0",
+    "underscore": "~1.5.2"
   },
   "devDependencies": {
     "mocha": "~1.13.0"
