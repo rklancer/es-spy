@@ -3,17 +3,16 @@
 var esprima = require('esprima');
 var estraverse = require('estraverse');
 var escodegen = require('escodegen');
-var _ = require('underscore');
 
 
 // For now, hold intermediate values in variables named  _1, _2, _3, ...
-var getTempVar = function() {
+var getTempVar = (function() {
     var count = 0;
 
     return function() {
         return '_' + (++count);
     };
-};
+}());
 
 
 var statementTransformsByNodeType = {
@@ -38,60 +37,80 @@ function extendPrototypeOf(parent) {
 function ExpressionResult() {
 }
 
-function Value(value) {
+function Value(value, fromReference) {
     this.value = value;
+    this.fromReference = fromReference;
 }
 Value.prototype = extendPrototypeOf(ExpressionResult);
-
+Value.prototype.toNode = function() {
+    return {
+        type: 'Identifier',
+        name: this.value
+    };
+};
 
 function EnvironmentReference(referencedName) {
     this.referencedName = referencedName;
 }
 EnvironmentReference.prototype = extendPrototypeOf(ExpressionResult);
+EnvironmentReference.prototype.toNode = function() {
+    return {
+        type: 'Identifier',
+        name: this.referencedName
+    };
+};
 
-function PropertyReference(baseValue, referencedName) {
+function PropertyReference(baseValue, referencedName, isComputed) {
     this.baseValue = baseValue;
     this.referencedName = referencedName;
+    this.isComputed = isComputed;
+
 }
 PropertyReference.prototype = extendPrototypeOf(ExpressionResult);
+PropertyReference.prototype.toNode = function() {
+    return {
+        type: 'MemberExpression',
+        computed: this.isComputed,
+        object: {
+            type: 'Identifier',
+            name: this.baseValue
+        },
+        property: {
+            type: 'Identifier',
+            name: this.referencedName
+        }
+    };
+};
 
 
-// This is the return type of transformExpression. It contains AST nodes corresponding to a
-// transformed version of the expression which stashes intermediate evaluation results in temporary
-// variables, and metadata with information about the temporary variables and what kind of data
-// will be stored in them after the expression nodes are evaluated at runtime.
-//  There are three cases. After the expression nodes are evaluated by the runtime:
-//    1. The variable named by 'baseValue' contains an object and 'referenceName' is a string value
-//       corresponding to a property of that object (which may be undefined). This corresponds
-//       roughly to a Reference specification type in ECMA-262 having isPropertyReference = true
-//    2. The variable named by 'referenceName' is a variable name in local scope. It can be
-//       dereferenced or assigned to.
-//    3. The value in 'value' is a plain Javascript value.Javascript
-//
-// Properties:
-// type: 'Reference' or 'Value'
-// baseValue: name of temp identifier corresponding to BaseValue of reference (object part), or null
-// referencedName: name of identifier
-// value: if type is Value,
-// expressions: list of expression nodes which need to be evaluated first to make this Value or
-// Reference valid.
-//
-// I don't think we need runtime considerations like IsStrictReference or HasPrimitiveBase
-function TransformedExpression(expressionResult, nodes) {
-    if ( ! expressionResult instanceof ExpressionResult ) {
-        throw new TypeError("expression must return an ExpressionResult");
-    }
-
-    nodes = nodes || [];
-    var _nodes = this.nodes = [];
-    _.each(nodes, function(node) {
-        _nodes.push(node);
-    });
+function TransformedExpression(result, nodes) {
+    this.result = result;
+    this.nodes = [];
 }
 
-// Returns a TransformedExpression consisting of getValue applied to the
-TransformedExpression.prototype.getValue = function(expression) {
+// Mutates the TransformedExpression to one that returns a value
+TransformedExpression.prototype.getValue = function() {
+    var reference;
 
+    if (this.result instanceof Value) {
+        return this;
+    }
+    reference = this.result;
+    this.result = new Value(getTempVar(), reference);
+
+    this.nodes.push({
+        type: 'AssignmentExpression',
+        operator: '=',
+        left: this.result.toNode(),
+        right: reference.toNode()
+    });
+    return this;
+};
+
+TransformedExpression.prototype.appendNodes = function(nodes) {
+    for (var i = 0, len = nodes.length; i < len; i++) {
+        this.nodes.push(nodes[i]);
+    }
 };
 
 // Returns a single AST node corresponding the TransformedExpression. If the TransformedExpression's
@@ -101,13 +120,18 @@ TransformedExpression.prototype.getValue = function(expression) {
 // such as the ternary expression transform, which need to consolidate an expression list into a
 // single node.
 TransformedExpression.prototype.toNode = function() {
-
+    if (this.nodes.length === 0) {
+        throw new Error("Can't convert empty node list to a single expression node");
+    }
+    if (this.nodes.length === 1) {
+        return this.nodes[0];
+    } else {
+        return {
+            type:'SequenceExpression',
+            expressions: this.nodes
+        };
+    }
 };
-
-// TODO: should this be a method of TransformedExpression?
-// returns a TransformedExpression
-function coerceToString(expression) {
-}
 
 var expressionTransformsByNodeType = {
     Identifier: function(node) {
@@ -115,10 +139,49 @@ var expressionTransformsByNodeType = {
     },
 
     MemberExpression: function(node) {
+        var ret = new TransformedExpression();
+        var baseValue = transformExpression(node.object).getValue();
+        var property;
 
+        ret.result = new PropertyReference();
+        ret.result.baseValue = baseValue.result.value;
+        // TODO .appendNodesFrom(expression)
+        ret.appendNodes(baseValue.nodes);
+
+        if (node.computed) {
+            ret.result.isComputed = true;
+            ret.result.referencedName = getTempVar();
+            property = transformExpression(node.property).getValue();
+            ret.appendNodes(property.nodes);
+
+            // TODO helpers for creating such assignments
+            ret.nodes.push({
+                type: 'AssignmentExpression',
+                operator: '=',
+                left: {
+                    type: 'Identifier',
+                    name: ret.result.referencedName
+                },
+                right: {
+                    type: 'BinaryExpression',
+                    operator: '+',
+                    left: {
+                        type: 'Literal',
+                        value: '',
+                        raw: '""'
+                    },
+                    right: property.result.value
+                }
+            });
+        } else {
+            ret.result.isComputed = false;
+            ret.result.referencedName = node.property.name;
+        }
+        return ret;
     }
 };
 
+/*jshint -W003*/
 // Returns a TransformedExpression
 function transformExpression(node) {
     return expressionTransformsByNodeType[node.type](node);
@@ -127,7 +190,7 @@ function transformExpression(node) {
 transformExpression.canTransform = function(node) {
     return expressionTransformsByNodeType.hasOwnProperty(node.type);
 };
-
+/*jshint +W003*/
 
 var nodeTypesToTraverse = {
     Program: true,
@@ -136,7 +199,7 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "++a.b;";
+var example = "a.b";
 var ast = esprima.parse(example);
 
 ast = estraverse.replace(ast, {
