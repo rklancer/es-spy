@@ -27,10 +27,11 @@ transformStatement.canTransform = function(node) {
 };
 
 
-function extendPrototypeOf(parent) {
+function extend(child, parent) {
     function F() {}
     F.prototype = parent.prototype;
-    return new F();
+    child.prototype = new F();
+    child.prototype.constructor = child;
 }
 
 // Marker type
@@ -41,7 +42,8 @@ function Value(value, fromReference) {
     this.value = value;
     this.fromReference = fromReference;
 }
-Value.prototype = extendPrototypeOf(ExpressionResult);
+extend(Value, ExpressionResult);
+
 Value.prototype.toNode = function() {
     return {
         type: 'Identifier',
@@ -52,7 +54,7 @@ Value.prototype.toNode = function() {
 function EnvironmentReference(referencedName) {
     this.referencedName = referencedName;
 }
-EnvironmentReference.prototype = extendPrototypeOf(ExpressionResult);
+extend(EnvironmentReference, ExpressionResult);
 EnvironmentReference.prototype.toNode = function() {
     return {
         type: 'Identifier',
@@ -64,9 +66,8 @@ function PropertyReference(baseValue, referencedName, isComputed) {
     this.baseValue = baseValue;
     this.referencedName = referencedName;
     this.isComputed = isComputed;
-
 }
-PropertyReference.prototype = extendPrototypeOf(ExpressionResult);
+extend(PropertyReference, ExpressionResult);
 PropertyReference.prototype.toNode = function() {
     return {
         type: 'MemberExpression',
