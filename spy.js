@@ -150,9 +150,9 @@ var expressionTransformsByNodeType = {
 
         if (node.computed) {
             ret.result.isComputed = true;
-            ret.result.referencedName = getTempVar();
             property = transformExpression(node.property).getValue();
             ret.appendNodes(property.nodes);
+            ret.result.referencedName = getTempVar();
 
             // TODO helpers for creating such assignments
             ret.nodes.push({
@@ -177,6 +177,7 @@ var expressionTransformsByNodeType = {
             ret.result.isComputed = false;
             ret.result.referencedName = node.property.name;
         }
+
         return ret;
     }
 };
@@ -204,7 +205,7 @@ var ast = esprima.parse(example);
 
 ast = estraverse.replace(ast, {
     enter: function (node, parent) {
-        var result;
+        var expression;
 
         // Is this a statement we have to handle specially? (ForInStatements, VariableDeclarators
         // require special handling because they have "naked" left-hand-side expressions. We must
@@ -223,10 +224,10 @@ ast = estraverse.replace(ast, {
             this.skip();
             // Our parent must be on the nodesToTraverse whitelist, so we may safely assume that
             // it getValue's the expression.
-            result = transformExpression(node);
+            expression = transformExpression(node);
 
-            if (result) {
-                return result.getValue().toNode();
+            if (expression) {
+                return expression.getValue().toNode();
             }
         } else if ( ! nodeTypesToTraverse.hasOwnProperty(node.type)) {
             // Again, to guard against getValue-ing expressions that are meant to be strictly on a
@@ -239,5 +240,5 @@ ast = estraverse.replace(ast, {
         // transformed.
     }
 });
-
+console.log(JSON.stringify(ast, null, 4));
 console.log("\n" + escodegen.generate(ast));
