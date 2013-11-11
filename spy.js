@@ -97,6 +97,7 @@ TransformedExpression.prototype.appendNodes = function(nodes) {
     for (var i = 0, len = nodes.length; i < len; i++) {
         this.nodes.push(nodes[i]);
     }
+    return this;
 };
 
 // Returns a single AST node corresponding the TransformedExpression. If the TransformedExpression's
