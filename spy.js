@@ -170,7 +170,7 @@ var expressionTransformsByNodeType = {
                         value: '',
                         raw: '""'
                     },
-                    right: property.result.value
+                    right: property.result.toNode()
                 }
             });
         } else {
@@ -200,7 +200,7 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "a.b";
+var example = "a[b]";
 var ast = esprima.parse(example);
 
 ast = estraverse.replace(ast, {
