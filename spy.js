@@ -1,6 +1,8 @@
 /*jshint unused: false */
 "use strict";
 
+var assert = require('assert');
+
 var esprima = require('esprima');
 var estraverse = require('estraverse');
 var escodegen = require('escodegen');
@@ -148,6 +150,67 @@ var expressionTransformsByNodeType = {
         }
 
         return ret;
+    },
+
+    CallExpression: function(node) {
+        // Section 11.2.3
+        // http://www.ecma-international.org/ecma-262/5.1/#sec-11.2.3
+
+        // TODO this approach may suffer from some naming confusion.
+
+        var retValName = getTempVar();
+        var ret = new TransformedExpression(new Value(retValName));
+        var func = transformExpression(node.callee).getValue();
+        ret.appendNodes(func.nodes);
+
+        var ref = func.result.fromReference;
+        var argExp;
+        var argExps = [];
+
+        for (var i = 0, len = node.arguments.length; i < len; i++) {
+            argExp = transformExpression(node.arguments[i]).getValue();
+            ret.appendNodes(argExp.nodes);
+            argExps.push(argExp.result.toNode());
+        }
+
+        var left = exp.identifier(retValName);
+        var right;
+        var thisArg;
+
+        if (ref instanceof EnvironmentReference) {
+            right = exp.callExpression(
+                func.result.toNode(),
+                argExps
+            );
+        } else {
+            // both of these choices require using the .call form:
+
+            if (ref instanceof PropertyReference) {
+                // Having evaluated the callee to get 'func', we must not evaluate it again.
+                // Therefore use Function.prototype.call on 'func' and pass the baseValue as the
+                // thisArg.
+                thisArg = exp.identifier(ref.baseValue);
+            } else {
+                // ref is a Value, perhaps returned by another CallExpression: f()() According to
+                // the spec, thisValue is undefined in this case. Therefore, transfrom to this:
+                // <value>.call(void 0, <arg 0>, <arg 1>...);
+                thisArg = exp.undef();
+            }
+
+            argExps.unshift(thisArg);
+
+            right = exp.callExpression(
+                exp.memberExpression(
+                    func.result.toNode(),
+                    false,
+                    exp.identifier('call')
+                ),
+                argExps
+            );
+
+        }
+        ret.nodes.push(exp.assign(left, right));
+        return ret;
     }
 };
 
@@ -169,7 +232,7 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "a[b]";
+var example = "f(x); a.f(y); f()(z)";
 var ast = esprima.parse(example);
 
 ast = estraverse.replace(ast, {
