@@ -1,9 +1,11 @@
 /*jshint unused: false */
 "use strict";
+
 var esprima = require('esprima');
 var estraverse = require('estraverse');
 var escodegen = require('escodegen');
 
+var exp = require('./lib/expressions');
 
 // For now, hold intermediate values in variables named  _1, _2, _3, ...
 var getTempVar = (function() {
@@ -45,10 +47,7 @@ function Value(value, fromReference) {
 extend(Value, ExpressionResult);
 
 Value.prototype.toNode = function() {
-    return {
-        type: 'Identifier',
-        name: this.value
-    };
+    return exp.identifier(this.value);
 };
 
 function EnvironmentReference(referencedName) {
@@ -56,10 +55,7 @@ function EnvironmentReference(referencedName) {
 }
 extend(EnvironmentReference, ExpressionResult);
 EnvironmentReference.prototype.toNode = function() {
-    return {
-        type: 'Identifier',
-        name: this.referencedName
-    };
+    return exp.identifier(this.referencedName);
 };
 
 function PropertyReference(baseValue, referencedName, isComputed) {
@@ -69,18 +65,11 @@ function PropertyReference(baseValue, referencedName, isComputed) {
 }
 extend(PropertyReference, ExpressionResult);
 PropertyReference.prototype.toNode = function() {
-    return {
-        type: 'MemberExpression',
-        computed: this.isComputed,
-        object: {
-            type: 'Identifier',
-            name: this.baseValue
-        },
-        property: {
-            type: 'Identifier',
-            name: this.referencedName
-        }
-    };
+    return exp.memberExpression(
+        exp.identifier(this.baseValue),
+        this.isComputed,
+        exp.identifier(this.referencedName)
+    );
 };
 
 
@@ -99,12 +88,8 @@ TransformedExpression.prototype.getValue = function() {
     reference = this.result;
     this.result = new Value(getTempVar(), reference);
 
-    this.nodes.push({
-        type: 'AssignmentExpression',
-        operator: '=',
-        left: this.result.toNode(),
-        right: reference.toNode()
-    });
+    this.nodes.push(exp.assign(this.result.toNode(), reference.toNode()));
+
     return this;
 };
 
@@ -127,10 +112,7 @@ TransformedExpression.prototype.toNode = function() {
     if (this.nodes.length === 1) {
         return this.nodes[0];
     } else {
-        return {
-            type:'SequenceExpression',
-            expressions: this.nodes
-        };
+        return exp.sequenceExpression(this.nodes);
     }
 };
 
@@ -146,7 +128,6 @@ var expressionTransformsByNodeType = {
 
         ret.result = new PropertyReference();
         ret.result.baseValue = baseValue.result.value;
-        // TODO .appendNodesFrom(expression)
         ret.appendNodes(baseValue.nodes);
 
         if (node.computed) {
@@ -155,25 +136,11 @@ var expressionTransformsByNodeType = {
             ret.appendNodes(property.nodes);
             ret.result.referencedName = getTempVar();
 
-            // TODO helpers for creating such assignments
-            ret.nodes.push({
-                type: 'AssignmentExpression',
-                operator: '=',
-                left: {
-                    type: 'Identifier',
-                    name: ret.result.referencedName
-                },
-                right: {
-                    type: 'BinaryExpression',
-                    operator: '+',
-                    left: {
-                        type: 'Literal',
-                        value: '',
-                        raw: '""'
-                    },
-                    right: property.result.toNode()
-                }
-            });
+            ret.nodes.push(exp.assign(
+                exp.identifier(ret.result.referencedName),
+                exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
+            ));
+
         } else {
             ret.result.isComputed = false;
             ret.result.referencedName = node.property.name;
