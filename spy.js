@@ -99,19 +99,23 @@ function TransformedExpression(result, nodes) {
     this.nodes = [];
 }
 
-// Mutates the TransformedExpression to one that returns a value
+// If the TransformedExpression's result is a Reference, mutate the TransformedExpression to return
+// a Value instead, by dereferencing the Reference (assigning it to a temp var)
 TransformedExpression.prototype.getValue = function() {
-    // TODO inline 'reference'
     var reference;
 
     if (this.result instanceof Value) {
         return this;
     }
+
     reference = this.result;
     this.result = new IdentifierValue(getTempVar(), reference);
-
-    this.nodes.push(exp.assign(this.result.toNode(), reference.toNode()));
-
+    this.nodes.push(
+        exp.assign(
+            this.result.toNode(),
+            reference.toNode()
+        )
+    );
     return this;
 };
 
