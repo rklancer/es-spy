@@ -172,10 +172,10 @@ var expressionTransformsByNodeType = {
             ret.result.referencedName = new IdentifierValue(getTempVar());
 
             ret.nodes.push(exp.assign(
-                ret.result.toNode(),
+                ret.result.referencedName.toNode(),
                 exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
             ));
-            ret.nodes.push(spy(node.property.range, ret.result));
+            ret.nodes.push(spy(node.property.range, ret.result.referencedName));
 
         } else {
             ret.result.isComputed = false;
@@ -292,7 +292,7 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "path = svg.selectAll(\"path\").data(partition.nodes(root));";
+var example = "a[b];";
 var ast = esprima.parse(example, { range: true });
 
 ast = estraverse.replace(ast, {
