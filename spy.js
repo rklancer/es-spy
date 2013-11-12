@@ -18,6 +18,12 @@ var getTempVar = (function() {
     };
 }());
 
+function spy(range, value) {
+    return exp.callExpression(
+        exp.identifier('_spy'),   // TODO: recycle this object?
+        [exp.literal(range[0], ''+range[0]), exp.literal(range[1], ''+range[1]), value.toNode()]
+    );
+}
 
 var statementTransformsByNodeType = {
 };
@@ -91,7 +97,8 @@ PropertyReference.prototype.toNode = function() {
 };
 
 
-function TransformedExpression(result, nodes) {
+function TransformedExpression(range, result, nodes) {
+    this.range = range;
     this.result = result;
     this.nodes = [];
 }
@@ -113,6 +120,7 @@ TransformedExpression.prototype.getValue = function() {
             reference.toNode()
         )
     );
+    this.nodes.push(spy(this.range, this.result));
     return this;
 };
 
@@ -142,15 +150,15 @@ TransformedExpression.prototype.toNode = function() {
 
 var expressionTransformsByNodeType = {
     Identifier: function(node) {
-        return new TransformedExpression(new EnvironmentReference(new IdentifierValue(node.name)));
+        return new TransformedExpression(node.range, new EnvironmentReference(new IdentifierValue(node.name)));
     },
 
     Literal: function(node) {
-        return new TransformedExpression(new LiteralValue(node.value, node.raw));
+        return new TransformedExpression(node.range, new LiteralValue(node.value, node.raw));
     },
 
     MemberExpression: function(node) {
-        var ret = new TransformedExpression();
+        var ret = new TransformedExpression(node.range);
         var base = transformExpression(node.object).getValue();
         var property;
 
@@ -167,6 +175,7 @@ var expressionTransformsByNodeType = {
                 ret.result.toNode(),
                 exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
             ));
+            ret.nodes.push(spy(node.property.range, ret.result));
 
         } else {
             ret.result.isComputed = false;
@@ -180,7 +189,7 @@ var expressionTransformsByNodeType = {
         // Section 11.2.3
         // http://www.ecma-international.org/ecma-262/5.1/#sec-11.2.3
 
-        var ret = new TransformedExpression();
+        var ret = new TransformedExpression(node.range);
         var func = transformExpression(node.callee).getValue();
         ret.appendNodes(func.nodes);
 
@@ -231,6 +240,7 @@ var expressionTransformsByNodeType = {
         }
         ret.result = new IdentifierValue(getTempVar());
         ret.nodes.push(exp.assign(ret.result.toNode(), right));
+        ret.nodes.push(spy(node.range, ret.result));
         return ret;
     },
 
@@ -241,7 +251,7 @@ var expressionTransformsByNodeType = {
 
         // Section 11.13.1
         // http://www.ecma-international.org/ecma-262/5.1/#sec-11.13.1
-        var ret = new TransformedExpression();
+        var ret = new TransformedExpression(node.range);
         var lref = transformExpression(node.left);
         ret.appendNodes(lref.nodes);
         var rval = transformExpression(node.right).getValue();
@@ -283,7 +293,7 @@ var nodeTypesToTraverse = {
 // ====
 
 var example = "path = svg.selectAll(\"path\").data(partition.nodes(root));";
-var ast = esprima.parse(example);
+var ast = esprima.parse(example, { range: true });
 
 ast = estraverse.replace(ast, {
     enter: function (node, parent) {
