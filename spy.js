@@ -42,35 +42,54 @@ function extend(child, parent) {
 function ExpressionResult() {
 }
 
-function Value(value, fromReference) {
-    this.value = value;
-    this.fromReference = fromReference;
+function Value() {
 }
 extend(Value, ExpressionResult);
 
-Value.prototype.toNode = function() {
-    return exp.identifier(this.value);
+function Reference() {
+}
+extend(Reference, ExpressionResult);
+
+function IdentifierValue(identifier, fromReference) {
+    this.identifier = identifier;
+    this.fromReference = fromReference;
+}
+extend(IdentifierValue, Value);
+
+IdentifierValue.prototype.toNode = function() {
+    return exp.identifier(this.identifier);
+};
+
+function LiteralValue(value, raw) {
+    this.value = value;
+    this.raw = raw;
+}
+extend(LiteralValue, Value);
+
+LiteralValue.prototype.toNode = function() {
+    return exp.literal(this.value, this.raw);
 };
 
 function EnvironmentReference(referencedName) {
     this.referencedName = referencedName;
 }
-extend(EnvironmentReference, ExpressionResult);
+extend(EnvironmentReference, Reference);
 EnvironmentReference.prototype.toNode = function() {
-    return exp.identifier(this.referencedName);
+    return this.referencedName.toNode();
 };
+
 
 function PropertyReference(baseValue, referencedName, isComputed) {
     this.baseValue = baseValue;
     this.referencedName = referencedName;
     this.isComputed = isComputed;
 }
-extend(PropertyReference, ExpressionResult);
+extend(PropertyReference, Reference);
 PropertyReference.prototype.toNode = function() {
     return exp.memberExpression(
-        exp.identifier(this.baseValue),
+        this.baseValue.toNode(),
         this.isComputed,
-        exp.identifier(this.referencedName)
+        this.referencedName.toNode()
     );
 };
 
@@ -82,13 +101,14 @@ function TransformedExpression(result, nodes) {
 
 // Mutates the TransformedExpression to one that returns a value
 TransformedExpression.prototype.getValue = function() {
+    // TODO inline 'reference'
     var reference;
 
     if (this.result instanceof Value) {
         return this;
     }
     reference = this.result;
-    this.result = new Value(getTempVar(), reference);
+    this.result = new IdentifierValue(getTempVar(), reference);
 
     this.nodes.push(exp.assign(this.result.toNode(), reference.toNode()));
 
@@ -121,32 +141,31 @@ TransformedExpression.prototype.toNode = function() {
 
 var expressionTransformsByNodeType = {
     Identifier: function(node) {
-        return new TransformedExpression(new EnvironmentReference(node.name));
+        return new TransformedExpression(new EnvironmentReference(new IdentifierValue(node.name)));
     },
 
     MemberExpression: function(node) {
         var ret = new TransformedExpression();
-        var baseValue = transformExpression(node.object).getValue();
+        var base = transformExpression(node.object).getValue();
         var property;
 
-        ret.result = new PropertyReference();
-        ret.result.baseValue = baseValue.result.value;
-        ret.appendNodes(baseValue.nodes);
+        ret.result = new PropertyReference(base.result);
+        ret.appendNodes(base.nodes);
 
         if (node.computed) {
             ret.result.isComputed = true;
             property = transformExpression(node.property).getValue();
             ret.appendNodes(property.nodes);
-            ret.result.referencedName = getTempVar();
+            ret.result.referencedName = new IdentifierValue(getTempVar());
 
             ret.nodes.push(exp.assign(
-                exp.identifier(ret.result.referencedName),
+                ret.result.toNode(),
                 exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
             ));
 
         } else {
             ret.result.isComputed = false;
-            ret.result.referencedName = node.property.name;
+            ret.result.referencedName = new IdentifierValue(node.property.name);
         }
 
         return ret;
@@ -156,14 +175,10 @@ var expressionTransformsByNodeType = {
         // Section 11.2.3
         // http://www.ecma-international.org/ecma-262/5.1/#sec-11.2.3
 
-        // TODO this approach may suffer from some naming confusion.
-
-        var retValName = getTempVar();
-        var ret = new TransformedExpression(new Value(retValName));
+        var ret = new TransformedExpression(new IdentifierValue(getTempVar()));
         var func = transformExpression(node.callee).getValue();
         ret.appendNodes(func.nodes);
 
-        var ref = func.result.fromReference;
         var argExp;
         var argExps = [];
 
@@ -173,7 +188,8 @@ var expressionTransformsByNodeType = {
             argExps.push(argExp.result.toNode());
         }
 
-        var left = exp.identifier(retValName);
+        var left = ret.result.toNode();
+        var ref = func.result.fromReference;
         var right;
         var thisArg;
 
@@ -189,7 +205,7 @@ var expressionTransformsByNodeType = {
                 // Having evaluated the callee to get 'func', we must not evaluate it again.
                 // Therefore use Function.prototype.call on 'func' and pass the baseValue as the
                 // thisArg.
-                thisArg = exp.identifier(ref.baseValue);
+                thisArg = ref.baseValue.toNode();
             } else {
                 // ref is a Value, perhaps returned by another CallExpression: f()() According to
                 // the spec, thisValue is undefined in this case. Therefore, transfrom to this:
