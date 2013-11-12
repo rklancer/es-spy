@@ -144,6 +144,10 @@ var expressionTransformsByNodeType = {
         return new TransformedExpression(new EnvironmentReference(new IdentifierValue(node.name)));
     },
 
+    Literal: function(node) {
+        return new TransformedExpression(new LiteralValue(node.value, node.raw));
+    },
+
     MemberExpression: function(node) {
         var ret = new TransformedExpression();
         var base = transformExpression(node.object).getValue();
@@ -248,7 +252,7 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "f(x); a.f(y); f()(z)";
+var example = "'blimey'.toString(); f.z(1, 2, 'stuff').x();";
 var ast = esprima.parse(example);
 
 ast = estraverse.replace(ast, {
