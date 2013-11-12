@@ -1,4 +1,4 @@
-/*jshint unused: false */
+/*jshint unused: false, boss: true*/
 "use strict";
 
 var assert = require('assert');
@@ -22,13 +22,10 @@ var getTempVar = (function() {
 var statementTransformsByNodeType = {
 };
 
-// returns a node
+// returns a node or false
 function transformStatement(node) {
+    return false;
 }
-
-transformStatement.canTransform = function(node) {
-    return statementTransformsByNodeType.hasOwnProperty(node.type);
-};
 
 
 function extend(child, parent) {
@@ -235,13 +232,21 @@ var expressionTransformsByNodeType = {
         }
         ret.nodes.push(exp.assign(left, right));
         return ret;
+    },
+
+    AssignmentExpression: function(node) {
+        return false;
     }
 };
 
 /*jshint -W003*/
 // Returns a TransformedExpression
 function transformExpression(node) {
-    return expressionTransformsByNodeType[node.type](node);
+    var transform = expressionTransformsByNodeType[node.type];
+    if (transform) {
+        return transform(node);
+    }
+    return false;
 }
 
 transformExpression.canTransform = function(node) {
@@ -256,12 +261,13 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "'blimey'.toString(); f.z(1, 2, 'stuff').x();";
+var example = "f();";
 var ast = esprima.parse(example);
 
 ast = estraverse.replace(ast, {
     enter: function (node, parent) {
         var expression;
+        var statement;
 
         // Is this a statement we have to handle specially? (ForInStatements, VariableDeclarators
         // require special handling because they have "naked" left-hand-side expressions. We must
@@ -270,21 +276,18 @@ ast = estraverse.replace(ast, {
         // prior to it and in its block in order to spy correctly.
 
         // TODO: handle object expressions which don't have node.type
-        if (transformStatement.canTransform(node)) {
+        if (statement = transformStatement(node)) {
             this.skip();
             // transformStatement just returns a subtree
-            return transformStatement(node);
+            return statement;
         }
 
-        if (transformExpression.canTransform(node)) {
+        if (expression = transformExpression(node)) {
             this.skip();
-            // Our parent must be on the nodesToTraverse whitelist, so we may safely assume that
-            // it getValue's the expression.
-            expression = transformExpression(node);
-
-            if (expression) {
-                return expression.getValue().toNode();
-            }
+            // Our parent must have been on the nodeTypesToTraverse 'whitelist' or else we would
+            // have been skipped. The whitelist contains statements known to not use the expressions
+            // as left hand sides. Therefore, it is safe to call getValue on the expression.
+            return expression.getValue().toNode();
         } else if ( ! nodeTypesToTraverse.hasOwnProperty(node.type)) {
             // Again, to guard against getValue-ing expressions that are meant to be strictly on a
             // left-hand-side, skip any expression or statement nodes that we don't understand.
