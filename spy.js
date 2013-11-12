@@ -235,7 +235,25 @@ var expressionTransformsByNodeType = {
     },
 
     AssignmentExpression: function(node) {
-        return false;
+        if (node.operator !== '=') {
+            return false;
+        }
+
+        // Section 11.13.1
+        // http://www.ecma-international.org/ecma-262/5.1/#sec-11.13.1
+        var ret = new TransformedExpression();
+        var lref = transformExpression(node.left);
+        ret.appendNodes(lref.nodes);
+        var rval = transformExpression(node.right).getValue();
+        ret.appendNodes(rval.nodes);
+        ret.nodes.push(
+            exp.assign(
+                lref.result.toNode(),
+                rval.result.toNode()
+            )
+        );
+        ret.result = rval.result;
+        return ret;
     }
 };
 
@@ -261,7 +279,7 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "f();";
+var example = "path = svg.selectAll(\"path\").data(partition.nodes(root));";
 var ast = esprima.parse(example);
 
 ast = estraverse.replace(ast, {
