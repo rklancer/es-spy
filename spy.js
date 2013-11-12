@@ -261,7 +261,10 @@ var expressionTransformsByNodeType = {
 // Returns a TransformedExpression
 function transformExpression(node) {
     var transform = expressionTransformsByNodeType[node.type];
+
     if (transform) {
+        // TODO pass new TransformedExpression to the transform function. Possibly set as the
+        // 'this' value of the transform methiod.
         return transform(node);
     }
     return false;
