@@ -180,7 +180,7 @@ var expressionTransformsByNodeType = {
         // Section 11.2.3
         // http://www.ecma-international.org/ecma-262/5.1/#sec-11.2.3
 
-        var ret = new TransformedExpression(new IdentifierValue(getTempVar()));
+        var ret = new TransformedExpression();
         var func = transformExpression(node.callee).getValue();
         ret.appendNodes(func.nodes);
 
@@ -193,7 +193,6 @@ var expressionTransformsByNodeType = {
             argExps.push(argExp.result.toNode());
         }
 
-        var left = ret.result.toNode();
         var ref = func.result.fromReference;
         var right;
         var thisArg;
@@ -230,7 +229,8 @@ var expressionTransformsByNodeType = {
             );
 
         }
-        ret.nodes.push(exp.assign(left, right));
+        ret.result = new IdentifierValue(getTempVar());
+        ret.nodes.push(exp.assign(ret.result.toNode(), right));
         return ret;
     },
 
