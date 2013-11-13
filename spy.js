@@ -226,7 +226,7 @@ var expressionTransformsByNodeType = {
                 // ref is a Value, perhaps returned by another CallExpression: f()() According to
                 // the spec, thisValue is undefined in this case. Therefore, transfrom to this:
                 // <value>.call(void 0, <arg 0>, <arg 1>...);
-                thisArg = exp.undef();
+                thisArg = exp.void0();
             }
 
             argExps.unshift(thisArg);
