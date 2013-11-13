@@ -18,10 +18,10 @@ var getTempVar = (function() {
     };
 }());
 
-function spy(range, value) {
+function spy(node, range) {
     return exp.callExpression(
         exp.identifier('_spy'),   // TODO: recycle this object?
-        [exp.literal(range[0], ''+range[0]), exp.literal(range[1], ''+range[1]), value.toNode()]
+        [node, exp.literal(range[0], ''+range[0]), exp.literal(range[1], ''+range[1])]
     );
 }
 
@@ -115,12 +115,13 @@ TransformedExpression.prototype.getValue = function() {
     reference = this.result;
     this.result = new IdentifierValue(getTempVar(), reference);
     this.nodes.push(
-        exp.assign(
-            this.result.toNode(),
-            reference.toNode()
+        spy(exp.assign(
+                this.result.toNode(),
+                reference.toNode()
+            ),
+            this.range
         )
     );
-    this.nodes.push(spy(this.range, this.result));
     return this;
 };
 
@@ -171,11 +172,13 @@ var expressionTransformsByNodeType = {
             ret.appendNodes(property.nodes);
             ret.result.referencedName = new IdentifierValue(getTempVar());
 
-            ret.nodes.push(exp.assign(
-                ret.result.referencedName.toNode(),
-                exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
+            ret.nodes.push(spy(
+                exp.assign(
+                  ret.result.referencedName.toNode(),
+                  exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
+                ),
+                property.range
             ));
-            ret.nodes.push(spy(node.property.range, ret.result.referencedName));
 
         } else {
             ret.result.isComputed = false;
@@ -239,8 +242,7 @@ var expressionTransformsByNodeType = {
 
         }
         ret.result = new IdentifierValue(getTempVar());
-        ret.nodes.push(exp.assign(ret.result.toNode(), right));
-        ret.nodes.push(spy(node.range, ret.result));
+        ret.nodes.push(spy(exp.assign(ret.result.toNode(), right), node.range));
         return ret;
     },
 
@@ -292,7 +294,7 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "a[b];";
+var example = "a[b]; a['b']";
 var ast = esprima.parse(example, { range: true });
 
 ast = estraverse.replace(ast, {
