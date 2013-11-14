@@ -297,42 +297,45 @@ var nodeTypesToTraverse = {
 
 // ====
 
-var example = "i = f();";
-var ast = esprima.parse(example, { range: true });
+// Walk the ast, transforming expressions into spied form.
+function transform(ast) {
+    return estraverse.replace(ast, {
+        enter: function (node, parent) {
+            var expression;
+            var statement;
 
-ast = estraverse.replace(ast, {
-    enter: function (node, parent) {
-        var expression;
-        var statement;
+            // TODO: handle object expressions which don't have node.type
 
-        // TODO: handle object expressions which don't have node.type
+            // Is this a statement we have to handle specially? (ForInStatements, VariableDeclarators
+            // require special handling because they have "naked" left-hand-side expressions. We must
+            // take care to not automatically transform these left-hand-side expressions into a form
+            // that gets a value. Note also that ForInStatements must have a statement inserted just
+            // prior to it and in its block in order to spy correctly.)
+            if (statement = transformStatement(node)) {
+                this.skip();
+                return statement;
+            }
 
-        // Is this a statement we have to handle specially? (ForInStatements, VariableDeclarators
-        // require special handling because they have "naked" left-hand-side expressions. We must
-        // take care to not automatically transform these left-hand-side expressions into a form
-        // that gets a value. Note also that ForInStatements must have a statement inserted just
-        // prior to it and in its block in order to spy correctly.)
-        if (statement = transformStatement(node)) {
-            this.skip();
-            return statement;
+            if (expression = transformExpression(node)) {
+                this.skip();
+                // Our parent must have been on the nodeTypesToTraverse 'whitelist' or else we would
+                // have been skipped. The whitelist contains statements known to not use the expressions
+                // as left hand sides. Therefore, it is safe to call getValue on the expression.
+                return expression.getValue().toNode();
+            } else if ( ! nodeTypesToTraverse.hasOwnProperty(node.type)) {
+                // Again, to guard against getValue-ing expressions that are meant to be strictly on a
+                // left-hand-side, skip any expression or statement nodes that we don't understand.
+                this.skip();
+            }
+
+            // Return without skipping or replacing. Either transformExpression couldn't do it's magic,
+            // or we're just traversing a BlockStatement or other non-expression that doesn't need to be
+            // transformed.
         }
+    });
+}
 
-        if (expression = transformExpression(node)) {
-            this.skip();
-            // Our parent must have been on the nodeTypesToTraverse 'whitelist' or else we would
-            // have been skipped. The whitelist contains statements known to not use the expressions
-            // as left hand sides. Therefore, it is safe to call getValue on the expression.
-            return expression.getValue().toNode();
-        } else if ( ! nodeTypesToTraverse.hasOwnProperty(node.type)) {
-            // Again, to guard against getValue-ing expressions that are meant to be strictly on a
-            // left-hand-side, skip any expression or statement nodes that we don't understand.
-            this.skip();
-        }
-
-        // Return without skipping or replacing. Either transformExpression couldn't do it's magic,
-        // or we're just traversing a BlockStatement or other non-expression that doesn't need to be
-        // transformed.
-    }
-});
+var example = "if (a) { a = b.c().d('x'); }";
+var ast = transform(esprima.parse(example, { range: true }));
 console.log(JSON.stringify(ast, null, 4));
 console.log("\n" + escodegen.generate(ast));
