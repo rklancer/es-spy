@@ -20,7 +20,7 @@ var getTempVar = (function() {
 
 function spy(node, range) {
     return exp.callExpression(
-        exp.identifier('_spy'),   // TODO: recycle this object?
+        exp.identifier('s'),   // TODO: recycle this object?
         [node, exp.literal(range[0], ''+range[0]), exp.literal(range[1], ''+range[1])]
     );
 }
@@ -182,6 +182,7 @@ var expressionTransformsByNodeType = {
 
         } else {
             ret.result.isComputed = false;
+            // TODO the use of IdentifierValue is not formally correct, it just "happens to work":
             ret.result.referencedName = new IdentifierValue(node.property.name);
         }
 
@@ -289,12 +290,14 @@ transformExpression.canTransform = function(node) {
 
 var nodeTypesToTraverse = {
     Program: true,
-    ExpressionStatement: true
+    ExpressionStatement: true,
+    IfStatement: true,
+    BlockStatement: true
 };
 
 // ====
 
-var example = "a[b]; a['b']";
+var example = "i = f();";
 var ast = esprima.parse(example, { range: true });
 
 ast = estraverse.replace(ast, {
@@ -302,16 +305,15 @@ ast = estraverse.replace(ast, {
         var expression;
         var statement;
 
+        // TODO: handle object expressions which don't have node.type
+
         // Is this a statement we have to handle specially? (ForInStatements, VariableDeclarators
         // require special handling because they have "naked" left-hand-side expressions. We must
         // take care to not automatically transform these left-hand-side expressions into a form
         // that gets a value. Note also that ForInStatements must have a statement inserted just
-        // prior to it and in its block in order to spy correctly.
-
-        // TODO: handle object expressions which don't have node.type
+        // prior to it and in its block in order to spy correctly.)
         if (statement = transformStatement(node)) {
             this.skip();
-            // transformStatement just returns a subtree
             return statement;
         }
 
