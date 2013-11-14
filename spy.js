@@ -149,6 +149,13 @@ TransformedExpression.prototype.toNode = function() {
     }
 };
 
+// TODO. Convert these so 'this' is a new TransformedExpression.
+// I think
+// the semantics are much clearer if we keep expressionTransformsByNodeType and call the transform:
+//   transform.call(new TransformedExpression, node)
+// than it is to have the transformes be methods on TransformedExpression.prototype
+// (in which case the TransformedExpression constructor would call this[node.type]())
+
 var expressionTransformsByNodeType = {
     Identifier: function(node) {
         return new TransformedExpression(node.range, new EnvironmentReference(new IdentifierValue(node.name)));
