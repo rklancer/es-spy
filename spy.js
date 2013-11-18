@@ -298,10 +298,6 @@ function transformExpression(node) {
     }
     return false;
 }
-
-transformExpression.canTransform = function(node) {
-    return expressionTransformsByNodeType.hasOwnProperty(node.type);
-};
 /*jshint +W003*/
 
 var nodeTypesToTraverse = {
