@@ -63,6 +63,15 @@ IdentifierValue.prototype.toNode = function() {
     return exp.identifier(this.identifier);
 };
 
+function TempVar(fromReference) {
+    // Later, we'll get a relocatable tempvar identifier "handle" from the scope
+    IdentifierValue.call(this, getTempVar(), fromReference);
+}
+extend(TempVar, IdentifierValue);
+// Later: TempVar.prototype.toNode should record the temp var-using ast node with the scope
+// This way, the scope can rewrite tempvar handles with non-colliding variable names after the scope
+// is analyzed.
+
 function LiteralValue(value, raw) {
     this.value = value;
     this.raw = raw;
@@ -113,7 +122,7 @@ TransformedExpression.prototype.getValue = function() {
     }
 
     reference = this.result;
-    this.result = new IdentifierValue(getTempVar(), reference);
+    this.result = new TempVar(reference);
     this.nodes.push(
         spy(exp.assign(
                 this.result.toNode(),
@@ -177,7 +186,7 @@ var expressionTransformsByNodeType = {
             ret.result.isComputed = true;
             property = transformExpression(node.property).getValue();
             ret.appendNodes(property.nodes);
-            ret.result.referencedName = new IdentifierValue(getTempVar());
+            ret.result.referencedName = new TempVar();
 
             ret.nodes.push(spy(
                 exp.assign(
@@ -249,7 +258,7 @@ var expressionTransformsByNodeType = {
             );
 
         }
-        ret.result = new IdentifierValue(getTempVar());
+        ret.result = new TempVar();
         ret.nodes.push(spy(exp.assign(ret.result.toNode(), right), node.range));
         return ret;
     },
@@ -342,7 +351,7 @@ function transform(ast) {
     });
 }
 
-var example = "if (a) { a = b.c().d('x'); }";
+var example = "svg.selectAll(data);";
 var ast = transform(esprima.parse(example, { range: true }));
 console.log(JSON.stringify(ast, null, 4));
 console.log("\n" + escodegen.generate(ast));
