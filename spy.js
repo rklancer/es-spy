@@ -123,7 +123,7 @@ TransformedExpression.prototype.getValue = function() {
 
     reference = this.result;
     this.result = new TempVar(reference);
-    this.nodes.push(
+    this.appendNode(
         spy(exp.assign(
                 this.result.toNode(),
                 reference.toNode()
@@ -136,10 +136,16 @@ TransformedExpression.prototype.getValue = function() {
 
 TransformedExpression.prototype.appendNodes = function(nodes) {
     for (var i = 0, len = nodes.length; i < len; i++) {
-        this.nodes.push(nodes[i]);
+        this.appendNode(nodes[i]);
     }
     return this;
 };
+
+TransformedExpression.prototype.appendNode = function(node) {
+    this.nodes.push(node);
+    return this;
+};
+
 
 // Returns a single AST node corresponding the TransformedExpression. If the TransformedExpression's
 // expressions array has more than one expression, they will be wrapped in a SequenceExpression
@@ -169,6 +175,9 @@ var expressionTransformsByNodeType = {
     },
 
     MemberExpression: function(node) {
+        // Section 11.2.1
+        // http://www.ecma-international.org/ecma-262/5.1/#sec-11.2.1
+
         var base = transformExpression(node.object).getValue();
         var property;
 
@@ -181,7 +190,7 @@ var expressionTransformsByNodeType = {
             this.appendNodes(property.nodes);
             this.result.referencedName = new TempVar();
 
-            this.nodes.push(spy(
+            this.appendNode(spy(
                 exp.assign(
                   this.result.referencedName.toNode(),
                   exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
@@ -249,7 +258,7 @@ var expressionTransformsByNodeType = {
 
         }
         this.result = new TempVar();
-        this.nodes.push(spy(exp.assign(this.result.toNode(), right), node.range));
+        this.appendNode(spy(exp.assign(this.result.toNode(), right), node.range));
     },
 
     AssignmentExpression: function(node) {
@@ -263,7 +272,7 @@ var expressionTransformsByNodeType = {
         this.appendNodes(lref.nodes);
         var rval = transformExpression(node.right).getValue();
         this.appendNodes(rval.nodes);
-        this.nodes.push(
+        this.appendNode(
             exp.assign(
                 lref.result.toNode(),
                 rval.result.toNode()
