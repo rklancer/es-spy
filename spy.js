@@ -63,9 +63,10 @@ IdentifierValue.prototype.toNode = function() {
     return exp.identifier(this.identifier);
 };
 
-function TempVar(fromReference) {
+function TempVar(range, fromReference) {
     // Later, we'll get a relocatable tempvar identifier "handle" from the scope
     IdentifierValue.call(this, getTempVar(), fromReference);
+    this.range = range;
 }
 extend(TempVar, IdentifierValue);
 // Later: TempVar.prototype.toNode should record the temp var-using ast node with the scope
@@ -122,16 +123,13 @@ TransformedExpression.prototype.getValue = function() {
     }
 
     reference = this.result;
-    this.result = new TempVar(reference);
-    this.appendNode(
-        spy(exp.assign(
-                this.result.toNode(),
-                reference.toNode()
-            ),
-            this.range
-        )
-    );
+    this.result = new TempVar(this.range, reference);
+    this.assign(this.result, reference.toNode());
     return this;
+};
+
+TransformedExpression.prototype.assign = function(tempVar, node) {
+    this.appendNode(spy(exp.assign(tempVar.toNode(), node), tempVar.range));
 };
 
 TransformedExpression.prototype.appendNodes = function(nodes) {
@@ -188,16 +186,11 @@ var expressionTransformsByNodeType = {
             this.result.isComputed = true;
             property = transformExpression(node.property).getValue();
             this.appendNodes(property.nodes);
-            this.result.referencedName = new TempVar();
-
-            this.appendNode(spy(
-                exp.assign(
-                  this.result.referencedName.toNode(),
-                  exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
-                ),
-                property.range
-            ));
-
+            this.result.referencedName = new TempVar(property.range);
+            this.assign(
+                this.result.referencedName,
+                exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
+            );
         } else {
             this.result.isComputed = false;
             // TODO the use of IdentifierValue is not formally correct, it just "happens to work":
@@ -257,8 +250,8 @@ var expressionTransformsByNodeType = {
             );
 
         }
-        this.result = new TempVar();
-        this.appendNode(spy(exp.assign(this.result.toNode(), right), node.range));
+        this.result = new TempVar(node.range);
+        this.assign(this.result, right);
     },
 
     AssignmentExpression: function(node) {
