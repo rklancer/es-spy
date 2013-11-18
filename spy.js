@@ -158,67 +158,57 @@ TransformedExpression.prototype.toNode = function() {
     }
 };
 
-// TODO. Convert these so 'this' is a new TransformedExpression.
-// I think
-// the semantics are much clearer if we keep expressionTransformsByNodeType and call the transform:
-//   transform.call(new TransformedExpression, node)
-// than it is to have the transformes be methods on TransformedExpression.prototype
-// (in which case the TransformedExpression constructor would call this[node.type]())
 
 var expressionTransformsByNodeType = {
     Identifier: function(node) {
-        return new TransformedExpression(node.range, new EnvironmentReference(new IdentifierValue(node.name)));
+        this.result = new EnvironmentReference(new IdentifierValue(node.name));
     },
 
     Literal: function(node) {
-        return new TransformedExpression(node.range, new LiteralValue(node.value, node.raw));
+        this.result = new LiteralValue(node.value, node.raw);
     },
 
     MemberExpression: function(node) {
-        var ret = new TransformedExpression(node.range);
         var base = transformExpression(node.object).getValue();
         var property;
 
-        ret.result = new PropertyReference(base.result);
-        ret.appendNodes(base.nodes);
+        this.result = new PropertyReference(base.result);
+        this.appendNodes(base.nodes);
 
         if (node.computed) {
-            ret.result.isComputed = true;
+            this.result.isComputed = true;
             property = transformExpression(node.property).getValue();
-            ret.appendNodes(property.nodes);
-            ret.result.referencedName = new TempVar();
+            this.appendNodes(property.nodes);
+            this.result.referencedName = new TempVar();
 
-            ret.nodes.push(spy(
+            this.nodes.push(spy(
                 exp.assign(
-                  ret.result.referencedName.toNode(),
+                  this.result.referencedName.toNode(),
                   exp.binary(exp.literal('', '\'\''), '+', property.result.toNode())
                 ),
                 property.range
             ));
 
         } else {
-            ret.result.isComputed = false;
+            this.result.isComputed = false;
             // TODO the use of IdentifierValue is not formally correct, it just "happens to work":
-            ret.result.referencedName = new IdentifierValue(node.property.name);
+            this.result.referencedName = new IdentifierValue(node.property.name);
         }
-
-        return ret;
     },
 
     CallExpression: function(node) {
         // Section 11.2.3
         // http://www.ecma-international.org/ecma-262/5.1/#sec-11.2.3
 
-        var ret = new TransformedExpression(node.range);
         var func = transformExpression(node.callee).getValue();
-        ret.appendNodes(func.nodes);
+        this.appendNodes(func.nodes);
 
         var argExp;
         var argExps = [];
 
         for (var i = 0, len = node.arguments.length; i < len; i++) {
             argExp = transformExpression(node.arguments[i]).getValue();
-            ret.appendNodes(argExp.nodes);
+            this.appendNodes(argExp.nodes);
             argExps.push(argExp.result.toNode());
         }
 
@@ -258,9 +248,8 @@ var expressionTransformsByNodeType = {
             );
 
         }
-        ret.result = new TempVar();
-        ret.nodes.push(spy(exp.assign(ret.result.toNode(), right), node.range));
-        return ret;
+        this.result = new TempVar();
+        this.nodes.push(spy(exp.assign(this.result.toNode(), right), node.range));
     },
 
     AssignmentExpression: function(node) {
@@ -270,19 +259,17 @@ var expressionTransformsByNodeType = {
 
         // Section 11.13.1
         // http://www.ecma-international.org/ecma-262/5.1/#sec-11.13.1
-        var ret = new TransformedExpression(node.range);
         var lref = transformExpression(node.left);
-        ret.appendNodes(lref.nodes);
+        this.appendNodes(lref.nodes);
         var rval = transformExpression(node.right).getValue();
-        ret.appendNodes(rval.nodes);
-        ret.nodes.push(
+        this.appendNodes(rval.nodes);
+        this.nodes.push(
             exp.assign(
                 lref.result.toNode(),
                 rval.result.toNode()
             )
         );
-        ret.result = rval.result;
-        return ret;
+        this.result = rval.result;
     }
 };
 
@@ -290,11 +277,14 @@ var expressionTransformsByNodeType = {
 // Returns a TransformedExpression
 function transformExpression(node) {
     var transform = expressionTransformsByNodeType[node.type];
+    var expression;
 
     if (transform) {
-        // TODO pass new TransformedExpression to the transform function. Possibly set as the
-        // 'this' value of the transform methiod.
-        return transform(node);
+        expression = new TransformedExpression(node.range);
+        if (transform.call(expression, node) === false) {
+            return false;
+        }
+        return expression;
     }
     return false;
 }
@@ -347,7 +337,7 @@ function transform(ast) {
     });
 }
 
-var example = "svg.selectAll(data);";
+var example = "f()();";
 var ast = transform(esprima.parse(example, { range: true }));
 console.log(JSON.stringify(ast, null, 4));
 console.log("\n" + escodegen.generate(ast));
