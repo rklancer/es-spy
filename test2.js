@@ -1,6 +1,20 @@
-/*global Proxy, Reflect, WeakMap */
-// Crude first cut creating an object capable of detecting assignments
 'use strict';
+/* global Proxy, Reflect, WeakMap */
+
+// Proof-of-concept for verify side effects of expressions. Use to create test helpers that check
+// equivalence of the side effects of original and transformed (spied) code.
+
+// TODO: Deal with possible strict mode in test function:
+//   1. Preserve directive statements; right now we hoist function declarations above the 
+//      "use strict" directive, disabling it.
+//   2. Convert all var statements to assignmentExpression form ... var statements inside the
+//      test function become part of the inner scope instead of referring to the outer "with" scope
+//   3. Decide what to do about undeclared variable in the test function ... this is especially
+//      important because escope doesn't find any "implicit globals" if the test function is strict;
+//      also, you might want to test side effects of code that aborts due to a reference error.
+
+// TODO: Observe function invocation as well; may want to do this after converting this to a proper
+// test helper.
 
 require('harmony-reflect');
 var esprima = require('esprima');
@@ -9,8 +23,8 @@ var estraverse = require('estraverse');
 var escope = require('escope');
 
 function f() {
-    var a = {};
-    var b = 0;
+    a = {};
+    b = 0;
 
     g();
     g();
@@ -72,8 +86,6 @@ function name(variable) {
     return variable.name;
 }
 
-
-
 var ast = esprima.parse(f.toString());
 var scopes = escope.analyze(ast).scopes;
 var variables = scopes[0].implicit.variables.map(name).concat(scopes[1].variables.filter(isVariable).map(name)).concat('arguments');
@@ -111,20 +123,35 @@ ast = estraverse.replace(ast, {
     }
 });
 
-var withStatement = {
-    type: "Program",
-    body: [{
-        "type": "WithStatement",
-        "object": {
-            "type": "Identifier",
-            "name": "__context"
-        },
-        "body": {
-            type: "BlockStatement",
-            body: hoistedFunctions.concat(ast.body[0].body.body)
-        }
-    }]
+var withStatementWrapper = {
+    "type": "WithStatement",
+    "object": {
+        "type": "Identifier",
+        "name": "__context"
+    },
+    "body": {
+        "type": "BlockStatement",
+        "body": [
+            {
+                "type": "ReturnStatement",
+                "argument": {
+                    "type": "FunctionExpression",
+                    "id": null,
+                    "params": [],
+                    "defaults": [],
+                    "body": {
+                        "type": "BlockStatement",
+                        "body": hoistedFunctions.concat(ast.body[0].body.body)
+                    },
+                    "rest": null,
+                    "generator": false,
+                    "expression": false
+                }
+            }
+        ]
+    }
 };
+
 
 function spy(trap, target, name, value) {
     var printableName, printableValue;
@@ -182,8 +209,8 @@ var wrap = (function() {
     };
 }());
 
-var context = {};
-var values = {};
+var context = Object.create(null);
+var values = Object.create(null);
 
 // Can't use proxy wrapper for the with-context because with doesn't work properly with proxies
 variables.forEach(function(variable) {
@@ -200,5 +227,6 @@ variables.forEach(function(variable) {
     values[variable] = undefined;
 });
 
-var g = new Function('__context', escodegen.generate(withStatement));
-g(context);
+var code = escodegen.generate(withStatementWrapper);
+var g = new Function('__context', code)(context);
+g();
