@@ -12,7 +12,8 @@
 //   3. Decide what to do about undeclared variable in the test function ... this is especially
 //      important because escope doesn't find any "implicit globals" if the test function is strict;
 //      also, you might want to test side effects of code that aborts due to a reference error.
-
+//   4. (other context creating cases: catch blocks?
+// 
 // TODO: Observe function invocation as well; may want to do this after converting this to a proper
 // test helper.
 
@@ -27,7 +28,7 @@ function f() {
     b = 0;
 
     g();
-    g();
+    g.toString();
 
     function g() {
         a[b++] = 0;
@@ -39,30 +40,28 @@ function hoist(node) {
     var name = node.id.name;
 
     return {
-        "type": "VariableDeclaration",
-        "declarations": [
-            {
-                "type": "VariableDeclarator",
+        "type": "ExpressionStatement",
+        "expression": {
+            "type": "AssignmentExpression",
+            "operator": "=",
+            "left": {
+                "type": "Identifier",
+                "name": name
+            },
+            "right": {
+                "type": "FunctionExpression",
                 "id": {
                     "type": "Identifier",
                     "name": name
                 },
-                "init": {
-                    "type": "FunctionExpression",
-                    "id": {
-                        "type": "Identifier",
-                        "name": name
-                    },
-                    "params": [],
-                    "defaults": [],
-                    "body": node.body,
-                    "rest": null,
-                    "generator": false,
-                    "expression": false
-                }
+                "params": [],
+                "defaults": [],
+                "body": node.body,
+                "rest": null,
+                "generator": false,
+                "expression": false
             }
-        ],
-        "kind": "var"
+        }
     };
 }
 
