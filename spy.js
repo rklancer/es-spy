@@ -339,7 +339,7 @@ function transform(ast) {
     });
 }
 
-var example = "f()();";
+var example = 'd3.select("foo").selectAll("blah").css("a", "b");';
 var ast = transform(esprima.parse(example, { range: true }));
 console.log("\n" + example +"\n\n==>\n");
 console.log(escodegen.generate(ast));
