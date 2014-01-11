@@ -1,16 +1,16 @@
 describe "ExpressionStatement" {
-    it "should be spyable" {
+    it "should be spyable" {v
 
 		var result, ctx;
 
-		result = evaluate {
+		result = evaluate => {
 		    a;
-		} with ctx = {
+		} in ctx = {
 		    a: {}
 		}
 
 		test "expression is spied" { result.spy("`a`") === ctx.a }
-		test "returns its value"   { result.value === ctx.a; }
+		test "returns its value"   { value === ctx.a; }
 	}
 }
 
@@ -25,13 +25,13 @@ describe "CallExpression" {
     	}
 
     	test "when environment reference -> this is global" { 
-    	    with ctx evaluate { getThis(); }.value === global 
+    	    in ctx evaluate => { getThis() }.value === global 
     	}
     	test "when property reference -> this is base" { 
-    	    with ctx evaluate { base.getThis() }.value === ctx.base 
+    	    in ctx evaluate => { base.getThis() }.value === ctx.base 
     	}
     	test "when value -> this is undefined" { 
-    	    with ctx evaluate { getThisGetter()() }.value === undefined
+    	    in ctx evaluate => { getThisGetter()() }.value === undefined
     	}
     }
 }
@@ -39,5 +39,7 @@ describe "CallExpression" {
 
 
     // idea: allow partial evaluation so we can apply different "with" contexts ... 
-    // (or the reverse, using different "evals" with a "with" context)
+    // (or the reverse, using different "evals" in a "with" context)
 
+the reason we want to wrap the spied function in a with statement is to detect (and trap) variable accesses.
+however, the with statement affects the this context of called functions.

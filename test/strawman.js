@@ -28,12 +28,17 @@ describe("CallExpressions", function() {
             base: { getThis: getThis }
         };
 
+        // we want quick access to the spied form of the expression
+        // we also want to evaluate the side effects of the unspied form
+        // and we want to compare those side effects in an afterEach
+        var ctx = evaluationContext(ctx, {});
+
+        res = inCtx("<function source>");
+        afterEach(function() {
+          ctx.evaluate(res.source.untransformed).log.matches(res.log);
+        });
 
 
-        // Questions:
-
-
-        var inCtx = evaluateWith(ctx, {});
         var res;
 
         // pointless style:
@@ -51,6 +56,8 @@ describe("CallExpressions", function() {
         it("is undefined when call is environment reference not from a with statement", function() {
             res = inCtx("getThis();");
             res.returns(undefined);
+            res.log.matches(res.unspiedForm.log());
+
 
             // This should be more general: that access logs match overall.
             accessCount(res, 'getThis').should.equal(1);
