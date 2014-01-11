@@ -341,5 +341,5 @@ function transform(ast) {
 
 var example = "f()();";
 var ast = transform(esprima.parse(example, { range: true }));
-console.log(JSON.stringify(ast, null, 4));
-console.log("\n" + escodegen.generate(ast));
+console.log("\n" + example +"\n\n==>\n");
+console.log(escodegen.generate(ast));
