@@ -20,7 +20,7 @@ var getTempVar = (function() {
 
 function spy(node, range) {
     return exp.callExpression(
-        exp.identifier('s'),   // TODO: recycle this object?
+        exp.identifier('__spy'),   // TODO: recycle this object?
         [node, exp.literal(range[0], ''+range[0]), exp.literal(range[1], ''+range[1])]
     );
 }
